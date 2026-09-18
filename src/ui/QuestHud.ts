@@ -86,11 +86,15 @@ export class QuestHud {
   }
 
   private layout(): void {
-    const center = this.scene.scale.width / 2;
-    const y = 94;
+    const width = this.scene.scale.width;
+    const landscape = width > this.scene.scale.height;
+    const center = width / 2;
+    const y = landscape ? Math.min(46, Math.max(30, this.scene.scale.height * 0.14)) : 94;
     const contentWidth = QuestHud.PAD_SIZE + (this.steps.length - 1) * QuestHud.STEP_SPACING;
     const backingWidth = contentWidth + QuestHud.HORIZONTAL_PADDING;
-    const scale = Math.min(1, (this.scene.scale.width - 16) / backingWidth);
+    // 橫向時為左側關卡標籤與右側地圖按鈕保留空間。
+    const availableWidth = landscape ? width - 216 : width - 16;
+    const scale = Math.min(1, Math.max(1, availableWidth) / backingWidth);
     this.backing.setPosition(center, y).setScale(scale);
     this.icons.forEach((icon, index) => {
       const x = center + (index - (this.steps.length - 1) / 2) * QuestHud.STEP_SPACING * scale;
