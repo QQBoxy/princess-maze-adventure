@@ -27,6 +27,7 @@ export class QuestController {
   private fairyTrail: Phaser.Math.Vector2[] = [];
   private lastFairyTrailPosition?: Phaser.Math.Vector2;
   private fairyGround?: Phaser.Math.Vector2;
+  private fairyGlow?: Phaser.GameObjects.Container;
   private fairyClue?: Phaser.GameObjects.Image;
   private treeLeaf?: Phaser.GameObjects.Image;
   private treeLeafGlow?: Phaser.GameObjects.Arc;
@@ -157,9 +158,18 @@ export class QuestController {
         const fairy = this.objects.get('fairy');
         if (fairy) {
           this.scene.tweens.killTweensOf(fairy);
-          this.fairyGround = new Phaser.Math.Vector2(fairy.x, fairy.y);
+          const away = new Phaser.Math.Vector2(fairy.x - this.player.x, fairy.y - this.player.y);
+          if (away.lengthSq() < 1) away.set(-1, 0);
+          this.fairyGround = away.normalize().scale(90).add(new Phaser.Math.Vector2(this.player.x, this.player.y));
           this.lastFairyTrailPosition = new Phaser.Math.Vector2(this.player.x, this.player.y);
           this.fairyTrail = [this.lastFairyTrailPosition.clone()];
+          const outer = this.scene.add.circle(0, 0, 53, 0xffec9e, 0.16);
+          const inner = this.scene.add.circle(0, 0, 34, 0xfff5c8, 0.2);
+          this.fairyGlow = this.scene.add.container(this.fairyGround.x, this.fairyGround.y - 8, [outer, inner])
+            .setDepth(90001);
+          this.scene.tweens.add({ targets: outer, alpha: { from: 0.12, to: 0.25 },
+            scale: { from: 0.9, to: 1.12 }, duration: 1100, yoyo: true, repeat: -1 });
+          fairy.setPosition(this.fairyGround.x, this.fairyGround.y - 8).setDepth(90002);
         }
         if (this.fairyClue) {
           this.scene.tweens.killTweensOf(this.fairyClue);
@@ -253,8 +263,14 @@ export class QuestController {
           this.fairyGround.y + (target.y - this.fairyGround.y) / distance * step);
       }
     }
-    fairy.setPosition(this.fairyGround.x, this.fairyGround.y - 8 - Math.sin(this.scene.time.now / 190) * 4)
-      .setDepth(this.fairyGround.y + 1);
+    const away = this.fairyGround.clone().subtract(current);
+    if (away.lengthSq() < 90 * 90) {
+      if (away.lengthSq() < 1) away.set(-1, 0);
+      this.fairyGround.copy(current).add(away.normalize().scale(90));
+    }
+    const fairyY = this.fairyGround.y - 8 - Math.sin(this.scene.time.now / 190) * 4;
+    fairy.setPosition(this.fairyGround.x, fairyY);
+    this.fairyGlow?.setPosition(this.fairyGround.x, fairyY);
   }
 
   private showThoughtBubble(texture: string): void {

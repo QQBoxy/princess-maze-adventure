@@ -8,18 +8,22 @@ export class InputController {
   private readonly keys: Record<string, Phaser.Input.Keyboard.Key>;
   private activePointerId: number | null = null;
   private origin = new Phaser.Math.Vector2();
+  private fixedOrigin = new Phaser.Math.Vector2();
   private analog = new Phaser.Math.Vector2();
   private enabled = true;
+  private touchMode = window.matchMedia('(pointer: coarse)').matches;
   private readonly canStart: (x: number, y: number) => boolean;
   private readonly cancelListener: () => void;
+  private readonly touchRadius = GAME.input.maxDistance + 28;
 
   constructor(scene: Phaser.Scene, canStart: (x: number, y: number) => boolean) {
     this.scene = scene;
     this.canStart = canStart;
     this.ring = scene.add.circle(0, 0, GAME.input.maxDistance, 0xffffff, 0.12)
-      .setStrokeStyle(3, 0xffffff, 0.5).setScrollFactor(0).setDepth(100100).setVisible(false);
+      .setStrokeStyle(3, 0xffffff, 0.5).setScrollFactor(0).setDepth(100100).setVisible(this.touchMode);
     this.knob = scene.add.circle(0, 0, 28, 0xffffff, 0.48)
-      .setStrokeStyle(2, 0xffffff, 0.75).setScrollFactor(0).setDepth(100101).setVisible(false);
+      .setStrokeStyle(2, 0xffffff, 0.75).setScrollFactor(0).setDepth(100101).setVisible(this.touchMode);
+    this.layout();
 
     const keyboard = scene.input.keyboard;
     if (!keyboard) throw new Error('Keyboard input is unavailable');
@@ -28,6 +32,7 @@ export class InputController {
     scene.input.on('pointermove', this.onMove, this);
     scene.input.on('pointerup', this.onUp, this);
     scene.input.on('gameout', this.cancel, this);
+    scene.scale.on('resize', this.layout, this);
     this.cancelListener = () => this.cancel();
     scene.game.canvas.addEventListener('pointercancel', this.cancelListener);
   }
@@ -50,15 +55,20 @@ export class InputController {
     this.scene.input.off('pointermove', this.onMove, this);
     this.scene.input.off('pointerup', this.onUp, this);
     this.scene.input.off('gameout', this.cancel, this);
+    this.scene.scale.off('resize', this.layout, this);
     this.scene.game.canvas.removeEventListener('pointercancel', this.cancelListener);
   }
 
   private onDown(pointer: Phaser.Input.Pointer): void {
-    if (!this.enabled || this.activePointerId !== null || !this.canStart(pointer.x, pointer.y)) return;
+    const event = pointer.event;
+    const mouseInput = event instanceof MouseEvent && (!('pointerType' in event) || event.pointerType === 'mouse');
+    if (!this.enabled || this.activePointerId !== null || !this.canStart(pointer.x, pointer.y)
+      || (!mouseInput && Phaser.Math.Distance.Between(pointer.x, pointer.y, this.fixedOrigin.x, this.fixedOrigin.y) > this.touchRadius)) return;
     this.activePointerId = pointer.id;
-    this.origin.set(pointer.x, pointer.y);
-    this.ring.setPosition(pointer.x, pointer.y).setVisible(true);
-    this.knob.setPosition(pointer.x, pointer.y).setVisible(true);
+    this.touchMode = !mouseInput;
+    this.origin.copy(mouseInput ? new Phaser.Math.Vector2(pointer.x, pointer.y) : this.fixedOrigin);
+    this.ring.setPosition(this.origin.x, this.origin.y).setVisible(true);
+    this.knob.setPosition(this.origin.x, this.origin.y).setVisible(true);
     this.updateAnalog(pointer.x, pointer.y);
   }
 
@@ -85,7 +95,19 @@ export class InputController {
   private cancel(): void {
     this.activePointerId = null;
     this.analog.set(0, 0);
-    this.ring.setVisible(false);
-    this.knob.setVisible(false);
+    this.origin.copy(this.fixedOrigin);
+    this.ring.setPosition(this.fixedOrigin.x, this.fixedOrigin.y).setVisible(this.touchMode);
+    this.knob.setPosition(this.fixedOrigin.x, this.fixedOrigin.y).setVisible(this.touchMode);
+  }
+
+  private layout(): void {
+    this.cancel();
+    const width = this.scene.scale.width;
+    const height = this.scene.scale.height;
+    const portrait = height > width;
+    this.fixedOrigin.set(portrait ? width / 2 : Math.min(118, width * 0.18), height - 118);
+    this.origin.copy(this.fixedOrigin);
+    this.ring.setPosition(this.fixedOrigin.x, this.fixedOrigin.y);
+    this.knob.setPosition(this.fixedOrigin.x, this.fixedOrigin.y);
   }
 }

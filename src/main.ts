@@ -24,4 +24,27 @@ const phaserConfig: Phaser.Types.Core.GameConfig = {
   scene: [GameScene],
 };
 
-new Phaser.Game(phaserConfig);
+const game = new Phaser.Game(phaserConfig);
+const gameHost = document.getElementById('game');
+
+if (gameHost) {
+  // 手機旋轉時瀏覽器可能先更新容器、稍後才更新 Phaser 畫布。
+  let resizeFrame = 0;
+  const syncCanvasSize = (): void => {
+    if (resizeFrame) return;
+    resizeFrame = requestAnimationFrame(() => {
+      resizeFrame = 0;
+      const bounds = gameHost.getBoundingClientRect();
+      if (bounds.width < 1 || bounds.height < 1 || !game.scale?.parent) return;
+      const parentChanged = game.scale.getParentBounds();
+      const canvasOutOfSync = Math.abs(game.canvas.width - bounds.width) > 1
+        || Math.abs(game.canvas.height - bounds.height) > 1;
+      if (parentChanged || canvasOutOfSync) game.scale.refresh();
+    });
+  };
+
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(syncCanvasSize).observe(gameHost);
+  window.addEventListener('resize', syncCanvasSize);
+  window.addEventListener('orientationchange', syncCanvasSize);
+  window.visualViewport?.addEventListener('resize', syncCanvasSize);
+}

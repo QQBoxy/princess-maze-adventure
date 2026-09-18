@@ -1,5 +1,6 @@
 :root { color-scheme: light; font-family: "PingFang TC", "Noto Sans TC", system-ui, sans-serif; }
 * { box-sizing: border-box; }
 html, body, #game { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #203b2a; }
+#game { height: 100dvh; }
 body { touch-action: none; overscroll-behavior: none; }
 canvas { display: block; touch-action: none; }

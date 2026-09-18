@@ -20,13 +20,6 @@ export class GameScene extends Phaser.Scene {
   private goal!: Goal;
   private hasLeaf = false;
   private forestShade?: Phaser.GameObjects.Rectangle;
-  private magicButton?: Phaser.GameObjects.Container;
-  private magicIcon?: Phaser.GameObjects.Image;
-  private magicCooldown?: Phaser.GameObjects.Graphics;
-  private magicReadyAt = 0;
-  private lastCooldownBucket = -1;
-  private magicUnlocked = false;
-  private magicGlow?: Phaser.GameObjects.Container;
   private nightPhase: 'day' | 'dusk' | 'night' = 'day';
   private levelLabel?: Phaser.GameObjects.Text;
 
@@ -42,13 +35,6 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     // `scene.restart()` 會重用 Scene 實例；新一局要重設流程與物理狀態。
     this.completed = false;
-    this.magicUnlocked = false;
-    this.magicReadyAt = 0;
-    this.lastCooldownBucket = -1;
-    this.magicButton = undefined;
-    this.magicGlow = undefined;
-    this.magicIcon = undefined;
-    this.magicCooldown = undefined;
     this.forestShade = undefined;
     this.nightPhase = 'day';
     this.physics.resume();
@@ -69,7 +55,7 @@ export class GameScene extends Phaser.Scene {
     this.quest = new QuestController(this, map, levelConfig.quest, this.player, {
       leafFound: () => { this.hasLeaf = true; },
       fairyMet: () => this.setForestPhase('dusk'),
-      fairyPartner: () => { this.setForestPhase('night'); this.unlockMagic(); },
+      fairyPartner: () => this.setForestPhase('night'),
     }, this.hasLeaf);
     this.goal = new Goal(this, map.goal, this.player, () => this.tryWin());
     this.goal.setLocked(!this.quest.isReadyForCastle(), levelConfig.quest === 'garden');
@@ -79,8 +65,8 @@ export class GameScene extends Phaser.Scene {
       this.controls?.setEnabled(!open && !this.completed);
       if (open) this.player?.setVelocity(0, 0);
     });
-    this.controls = new InputController(this, (x, y) => !this.completed && y > 128 &&
-      !this.minimap.isMapButtonHit(x, y) && !this.isMagicButtonHit(x, y));
+    this.controls = new InputController(this, (x, y) => !this.completed &&
+      !this.minimap.isMapButtonHit(x, y));
     this.minimap.update(this.player.x, this.player.y);
     this.addLevelLabel();
     if (this.level === 1) this.addTutorial();
@@ -91,7 +77,7 @@ export class GameScene extends Phaser.Scene {
       this.controls.destroy();
       this.minimap.destroy();
       this.quest.destroy();
-      this.scale.off('resize', this.layoutForestUi, this);
+      this.scale.off('resize', this.layoutForestShade, this);
       this.scale.off('resize', this.layoutLevelLabel, this);
     });
   }
@@ -102,7 +88,6 @@ export class GameScene extends Phaser.Scene {
     this.minimap.update(this.player.x, this.player.y);
     if (!this.completed && !this.minimap.isOpen()) this.quest.update();
     this.goal.setLocked(!this.quest.isReadyForCastle(), this.level === 4);
-    this.updateMagicUi();
     if (this.fpsText) this.fpsText.setText(`FPS ${Math.round(this.game.loop.actualFps)}\n${this.debugMapText}`);
   }
 
@@ -154,7 +139,9 @@ export class GameScene extends Phaser.Scene {
 
   private addTutorial(): void {
     const isPortrait = this.scale.height > this.scale.width;
-    const text = this.add.text(18, 144, isPortrait ? '按住拖曳來移動\n橫向玩會更舒服喔' : '按住拖曳來移動・拖越遠走越快', {
+    const isTouch = window.matchMedia('(pointer: coarse)').matches;
+    const instruction = isTouch ? (isPortrait ? '拖曳下方搖桿來移動' : '拖曳左下角搖桿來移動') : '按住滑鼠拖曳來移動';
+    const text = this.add.text(18, 144, instruction, {
       fontFamily: 'sans-serif', fontSize: '16px', color: '#ffffff', backgroundColor: '#284b36cc', padding: { x: 12, y: 9 },
     }).setScrollFactor(0).setDepth(100180);
     this.tweens.add({ targets: text, alpha: 0, delay: 6500, duration: 800, onComplete: () => text.destroy() });
@@ -175,17 +162,8 @@ export class GameScene extends Phaser.Scene {
   private createForestAtmosphere(): void {
     this.forestShade = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x263556, 1)
       .setOrigin(0).setScrollFactor(0).setDepth(90000).setAlpha(0);
-    const background = this.add.circle(0, 0, 34, 0xffdf84, 0.96).setStrokeStyle(3, 0xffffff, 0.7);
-    this.magicIcon = this.add.image(0, 0, 'magicIcon').setDisplaySize(42, 42);
-    this.magicCooldown = this.add.graphics();
-    this.magicButton = this.add.container(0, 0, [background, this.magicIcon, this.magicCooldown])
-      .setSize(72, 72).setScrollFactor(0).setDepth(100190).setInteractive({ useHandCursor: true }).setVisible(false);
-    this.magicButton.on('pointerdown', (_pointer: Phaser.Input.Pointer, _x: number, _y: number, event: Phaser.Types.Input.EventData) => {
-      event.stopPropagation();
-      this.useMagic();
-    });
-    this.layoutForestUi();
-    this.scale.on('resize', this.layoutForestUi, this);
+    this.layoutForestShade();
+    this.scale.on('resize', this.layoutForestShade, this);
     if (this.hasLeaf) {
       const leaf = this.add.image(this.player.x, this.player.y - 55, 'leaf').setDepth(90001).setScale(0.7);
       this.tweens.add({ targets: leaf, y: leaf.y - 24, alpha: 0, delay: 1100, duration: 900, onComplete: () => leaf.destroy() });
@@ -199,53 +177,8 @@ export class GameScene extends Phaser.Scene {
       duration: 5000, ease: 'Sine.inOut' });
   }
 
-  private unlockMagic(): void {
-    this.magicUnlocked = true;
-    this.magicButton?.setVisible(true);
-    this.tweens.add({ targets: this.magicButton, scale: { from: 0.7, to: 1 }, duration: 380, ease: 'Back.out' });
-  }
-
-  private useMagic(): void {
-    if (!this.magicUnlocked || this.completed || this.minimap.isOpen() || this.time.now < this.magicReadyAt) return;
-    this.magicReadyAt = this.time.now + 10000;
-    this.lastCooldownBucket = -1;
-    this.magicGlow?.destroy();
-    const rings = [
-      this.add.circle(0, 0, 135, 0xfff1bd, 0.11),
-      this.add.circle(0, 0, 94, 0xfff0b2, 0.12),
-      this.add.circle(0, 0, 55, 0xffefaa, 0.16),
-    ];
-    this.magicGlow = this.add.container(this.player.x, this.player.y, rings).setDepth(90001);
-    const glow = this.magicGlow;
-    this.tweens.add({ targets: glow, alpha: 0, delay: 2600, duration: 650, onComplete: () => {
-      glow.destroy();
-      if (this.magicGlow === glow) this.magicGlow = undefined;
-    } });
-  }
-
-  private updateMagicUi(): void {
-    if (!this.magicUnlocked || !this.magicCooldown || !this.magicIcon) return;
-    const remaining = Math.max(0, this.magicReadyAt - this.time.now);
-    const bucket = Math.ceil(remaining / 100);
-    this.magicGlow?.setPosition(this.player.x, this.player.y);
-    if (bucket === this.lastCooldownBucket) return;
-    this.lastCooldownBucket = bucket;
-    this.magicIcon.setAlpha(remaining > 0 ? 0.45 : 1);
-    this.magicCooldown.clear();
-    if (remaining > 0) {
-      const fraction = 1 - remaining / 10000;
-      this.magicCooldown.lineStyle(5, 0xffffff, 0.92).beginPath()
-        .arc(0, 0, 29, -Math.PI / 2, -Math.PI / 2 + fraction * Math.PI * 2).strokePath();
-    }
-  }
-
-  private isMagicButtonHit(x: number, y: number): boolean {
-    return Boolean(this.magicButton?.visible && this.magicButton.getBounds().contains(x, y));
-  }
-
-  private layoutForestUi(): void {
+  private layoutForestShade(): void {
     this.forestShade?.setSize(this.scale.width, this.scale.height);
-    this.magicButton?.setPosition(this.scale.width - 58, this.scale.height - 68);
   }
 
   private createDebug(map: GeneratedMap): void {
@@ -483,10 +416,7 @@ export class GameScene extends Phaser.Scene {
     g.generateTexture('goalLock', 64, 64).clear();
     g.lineStyle(6, 0x4c8753).lineBetween(4, 56, 45, 13).lineBetween(12, 58, 58, 10).lineBetween(4, 26, 52, 60);
     g.fillStyle(0x74b35c).fillCircle(37, 22, 6).fillCircle(21, 43, 6);
-    g.generateTexture('vines', 64, 64).clear();
-    g.fillStyle(0xffefaa).fillCircle(32, 32, 20);
-    g.fillStyle(0xf4b65b).fillPoints([{ x: 32, y: 9 }, { x: 39, y: 25 }, { x: 55, y: 32 }, { x: 39, y: 39 }, { x: 32, y: 55 }, { x: 25, y: 39 }, { x: 9, y: 32 }, { x: 25, y: 25 }], true);
-    g.generateTexture('magicIcon', 64, 64).destroy();
+    g.generateTexture('vines', 64, 64).destroy();
   }
 
   private cellCenter(x: number, y: number): Phaser.Math.Vector2 {
