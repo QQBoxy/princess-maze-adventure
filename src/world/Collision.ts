@@ -5,7 +5,7 @@ import type { GeneratedMap } from './MapGenerator';
 export class CollisionSystem {
   readonly obstacles: Phaser.Physics.Arcade.StaticGroup;
 
-  constructor(scene: Phaser.Scene, map: GeneratedMap) {
+  constructor(scene: Phaser.Scene, map: GeneratedMap, theme: 'meadow' | 'forest') {
     this.obstacles = scene.physics.add.staticGroup();
     const tile = GAME.map.tileSize;
     for (let y = 0; y < map.height; y += 1) {
@@ -17,7 +17,7 @@ export class CollisionSystem {
         const object = this.obstacles.create(
           (x + 0.5) * tile + jitterX,
           (y + 0.5) * tile + jitterY,
-          isRock ? 'rock' : 'tree',
+          theme === 'forest' ? (isRock ? 'mossRock' : 'forestTree') : (isRock ? 'rock' : 'tree'),
         ) as Phaser.Physics.Arcade.Sprite;
         object.setDepth(object.y);
         const body = object.body as Phaser.Physics.Arcade.StaticBody;

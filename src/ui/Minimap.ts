@@ -5,6 +5,7 @@ import type { GeneratedMap } from '../world/MapGenerator';
 export class Minimap {
   private readonly scene: Phaser.Scene;
   private readonly map: GeneratedMap;
+  private readonly theme: 'meadow' | 'forest';
   private readonly visited: boolean[][];
   private readonly shade: Phaser.GameObjects.Rectangle;
   private readonly panel: Phaser.GameObjects.Graphics;
@@ -17,9 +18,10 @@ export class Minimap {
   private playerCell = { x: 0, y: 0 };
   private readonly onVisibilityChange: (open: boolean) => void;
 
-  constructor(scene: Phaser.Scene, map: GeneratedMap, onVisibilityChange: (open: boolean) => void) {
+  constructor(scene: Phaser.Scene, map: GeneratedMap, theme: 'meadow' | 'forest', onVisibilityChange: (open: boolean) => void) {
     this.scene = scene;
     this.map = map;
+    this.theme = theme;
     this.onVisibilityChange = onVisibilityChange;
     this.visited = Array.from({ length: map.height }, () => Array<boolean>(map.width).fill(false));
     this.shade = scene.add.rectangle(0, 0, 1, 1, 0x102019, 0.88).setOrigin(0).setScrollFactor(0).setDepth(100200).setVisible(false).setInteractive();
@@ -103,7 +105,9 @@ export class Minimap {
       for (let x = 0; x < this.map.width; x += 1) {
         if (!this.visited[y][x]) continue;
         const kind = this.map.cells[y][x];
-        const color = kind === 'blocked' ? 0x2f633c : kind === 'clearing' ? 0xa2d56e : 0x8aca62;
+        const color = this.theme === 'forest'
+          ? (kind === 'blocked' ? 0x31594d : kind === 'clearing' ? 0xa5bf91 : 0x80a984)
+          : (kind === 'blocked' ? 0x2f633c : kind === 'clearing' ? 0xa2d56e : 0x8aca62);
         this.mapGraphics.fillStyle(color, 1).fillRect(left + x * cellSize, mapTop + y * cellSize, Math.ceil(cellSize), Math.ceil(cellSize));
       }
     }
